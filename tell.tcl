@@ -1,7 +1,6 @@
 package require tie
 package require sqlite3
 
-sqlite3 telldb ./${database-basename}.sl3
 
 bind pub -|- [format "%s.tell" [string tolower $::nick]] pub:tell
 bind pub -|- "--tell" pub:tell
@@ -11,6 +10,7 @@ bind pubm -|- "*" pubm:tellcheck
 bind join -|- "*" join:tellcheck
 bind nick -|- "*" newnick:tellcheck
 
+if {[lsearch -exact [info commands] telldb]==-1} {sqlite3 telldb ./${database-basename}.sl3}
 if {[llength [telldb eval {SELECT name FROM sqlite_master WHERE type='table' AND name='huxley_tells' COLLATE NOCASE}]] != 1} {
 	telldb eval {CREATE TABLE huxley_tells(id text, stamp text, targ text, message text)}
 	putlog "huxley_tells table created."
@@ -23,6 +23,8 @@ if {[llength [telldb eval {SELECT name FROM sqlite_master WHERE type='table' AND
 
 #Returns list of length%3=0
 proc telldb:emptyforuser {target} {
+if {[lsearch -exact [info commands] telldb]==-1} {sqlite3 telldb ./${database-basename}.sl3}
+
  set arr [list]
  set barr [telldb eval {SELECT * FROM huxley_tells WHERE targ = :target ORDER BY CAST(stamp AS INTEGER);}]
  foreach {idid stamp targ text} $barr {
@@ -36,6 +38,8 @@ proc telldb:emptyforuser {target} {
 
 # void proc
 proc telldb:storeforuser {stamp src target text} {
+if {[lsearch -exact [info commands] telldb]==-1} {sqlite3 telldb ./${database-basename}.sl3}
+
  telldb eval {INSERT INTO huxley_tells VALUES(:src, :stamp, :target, :text)}
 }
 
