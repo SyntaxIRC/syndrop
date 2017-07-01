@@ -167,7 +167,10 @@ proc ::ts6::putmotdend {sck targ} {
 	puts $sck [format ":%s 376 %s :End of global MOTD." $sid $targ]
 }
 
-proc ::ts6::putmode {sck uid targ mode parm ts} {
+proc ::ts6::putmode {sck uid targ mode parm {ts ""}} {
+	if {$ts == ""} {
+		if {[set ts [tnda get "channels/$::netname($sck)/[ndaenc [string tolower $targ]]/ts"]] == ""} {return} ;#cant do it, doesnt exist
+	}
 	set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append sid [::ts6::b64e $::sid($sck)]
 	set sendid [::ts6::b64e $uid]
 	set sendnn [string repeat "A" [expr {6-[string length $sendid]}]]
@@ -175,7 +178,10 @@ proc ::ts6::putmode {sck uid targ mode parm ts} {
 	puts $sck [format ":%s%s TMODE %s %s %s %s" $sid $sendnn $ts $targ $mode $parm]
 }
 
-proc ::ts6::putjoin {sck uid targ ts} {
+proc ::ts6::putjoin {sck uid targ {ts ""}} {
+	if {$ts == ""} {
+		if {[set ts [tnda get "channels/$::netname($sck)/[ndaenc [string tolower $targ]]/ts"]] == ""} {set ts [clock format [clock seconds] -format %s]}
+	}
 	set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append sid [::ts6::b64e $::sid($sck)]
 	set sendid [::ts6::b64e $uid]
 	set sendnn [string repeat "A" [expr {6-[string length $sendid]}]]
@@ -331,6 +337,7 @@ proc ::ts6::irc-main {sck} {
 
 		"NICK" {
 			tnda set "nick/$::netname($sck)/[lindex $comd 0]" [lindex $comd 2]
+			tnda set "ts/$::netname($sck)/[lindex $comd 0]" [lindex $comd 3]
 		}
 
 		"EUID" {
@@ -354,6 +361,7 @@ proc ::ts6::irc-main {sck} {
 			tnda set "ident/$::netname($sck)/[lindex $comd $num]" [lindex $comd 6]
 			tnda set "vhost/$::netname($sck)/[lindex $comd $num]" [lindex $comd 7]
 			tnda set "ipaddr/$::netname($sck)/[lindex $comd $num]" [lindex $comd 8]
+			tnda set "ts/$::netname($sck)/[lindex $comd $num]" [lindex $comd 4]
 			tnda set "rname/$::netname($sck)/[lindex $comd $num]" $payload
 			putloglev j * [format "New user at %s %s %s!%s@%s (IP address %s, vhost %s) :%s" $::netname($sck) [lindex $comd $num] [lindex $comd 2] [lindex $comd 6] [tnda get "rhost/$::netname($sck)/[lindex $comd $num]"] [lindex $comd 8] [tnda get "vhost/$::netname($sck)/[lindex $comd $num]"] $payload]
 			tds:callbind $sck conn "-" "-" [lindex $comd $num]
