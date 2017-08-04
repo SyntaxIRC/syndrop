@@ -106,7 +106,7 @@ proc ::ts6::metadata {sck targ direction type {msg ""}} {
 		puts $sck [format ":%s ENCAP * METADATA %s %s %s :%s" $sid [string toupper $direction] $targ [string toupper $type] $msg]
 	}
 	if {[string toupper $direction] == "DELETE"} {
-		tnda set "metadata/$::netname($sck)/$targ/[ndaenc $type]" ""
+		tnda unset "metadata/$::netname($sck)/$targ/[ndaenc $type]"
 		puts $sck [format ":%s ENCAP * METADATA %s %s :%s" $sid [string toupper $direction] $targ [string toupper $type]]
 	}
 }
@@ -142,13 +142,13 @@ proc ::ts6::quit {sck uid msg} {
 	set sendnn [string repeat "A" [expr {6-[string length $sendid]}]]
 	append sendnn $sendid
 	puts $sck [format ":%s%s QUIT :%s" $sid $sendnn $msg]
-	tnda set "intclient/$::netname($sck)/${sid}${sendnn}" ""
-	tnda set "ident/$::netname($sck)/${sid}${sendnn}" ""
-	tnda set "rhost/$::netname($sck)/${sid}${sendnn}" ""
-	tnda set "vhost/$::netname($sck)/${sid}${sendnn}" ""
-	tnda set "rname/$::netname($sck)/${sid}${sendnn}" ""
-	tnda set "ipaddr/$::netname($sck)/${sid}${sendnn}" ""
-	tnda set "nick/$::netname($sck)/${sid}${sendnn}" ""
+	tnda unset "intclient/$::netname($sck)/${sid}${sendnn}"
+	tnda unset "ident/$::netname($sck)/${sid}${sendnn}"
+	tnda unset "rhost/$::netname($sck)/${sid}${sendnn}"
+	tnda unset "vhost/$::netname($sck)/${sid}${sendnn}"
+	tnda unset "rname/$::netname($sck)/${sid}${sendnn}"
+	tnda unset "ipaddr/$::netname($sck)/${sid}${sendnn}"
+	tnda unset "nick/$::netname($sck)/${sid}${sendnn}"
 }
 
 proc ::ts6::setacct {sck targ msg} {
@@ -235,11 +235,11 @@ proc ::ts6::irc-main {sck} {
 			if {[string index [lindex $comd 2] 0] == "#" || [string index [lindex $comd 2] 0] == "&" || [string index [lindex $comd 2] 0] == "!" || [string index [lindex $comd 2] 0] == "+" || [string index [lindex $comd 2] 0] == "."} {
 				set client chan
 				tds:callbind $sck pub "-" [string tolower [lindex $payload 0]] [lindex $comd 2] [lindex $comd 0] [lrange $payload 1 end]
-				tds:callbind $sck evnt "-" "chanmsg" [lindex $comd 0] [lindex $comd 2] [lrange $payload 0 end]
+				tds:callbind $sck evnt "-" "chanmsg" [lindex $comd 0] [lindex $comd 2] $payload
 			} {
 				set client [tnda get "intclient/$::netname($sck)/[lindex $comd 2]"]
 				tds:callbind $sck msg $client [string tolower [lindex $payload 0]] [lindex $comd 0] [lrange $payload 1 end]
-				tds:callbind $sck "evnt" "-" "privmsg" [lindex $comd 0] [lindex $comd 2] [lrange $payload 0 end]
+				tds:callbind $sck "evnt" "-" "privmsg" [lindex $comd 0] [lindex $comd 2] $payload
 			}
 		}
 
@@ -249,11 +249,11 @@ proc ::ts6::irc-main {sck} {
 				set client chan
 				tds:callbind $sck pubnotc "-" [string tolower [lindex $payload 0]] [lindex $comd 2] [lindex $comd 0] [lrange $payload 1 end]
 				tds:callbind $sck pubnotc-m "-" [string tolower [lindex $payload 0]] [lindex $comd 2] [lindex $comd 0] [lrange $payload 1 end]
-				tds:callbind $sck "evnt" "-" "channotc" [lindex $comd 0] [lindex $comd 2] [lrange $payload 0 end]
+				tds:callbind $sck "evnt" "-" "channotc" [lindex $comd 0] [lindex $comd 2] $payload
 			} {
 				set client [tnda get "intclient/$::netname($sck)/[lindex $comd 2]"]
 				tds:callbind $sck notc $client [string tolower [lindex $payload 0]] [lindex $comd 0] [lrange $payload 1 end]
-				tds:callbind $sck "evnt" "-" "privnotc" [lindex $comd 0] [lindex $comd 2] [lrange $payload 0 end]
+				tds:callbind $sck "evnt" "-" "privnotc" [lindex $comd 0] [lindex $comd 2] $payload
 			}
 		}
 
@@ -394,7 +394,7 @@ proc ::ts6::irc-main {sck} {
 							tds:callbind $sck encap "-" "metadata.[string tolower [lindex $comd 6]]" [lindex $comd 5] $payload
 						}
 						"DELETE" {
-							tnda set "metadata/$::netname($sck)/[lindex $comd 5]/[ndaenc $payload]" ""
+							tnda unset "metadata/$::netname($sck)/[lindex $comd 5]/[ndaenc $payload]"
 							tds:callbind $sck encap "-" "metadata.[string tolower $payload]" [lindex $comd 5] ""
 						}
 					}
@@ -417,16 +417,16 @@ proc ::ts6::irc-main {sck} {
 				tnda set "userchan/$::netname($sck)/[lindex $comd 0]/$chan" 0
 			}
 
-			tnda set "login/$::netname($sck)/[lindex $comd 0]" ""
-			tnda set "nick/$::netname($sck)/[lindex $comd 0]" ""
+			tnda unset "login/$::netname($sck)/[lindex $comd 0]"
+			tnda unset "nick/$::netname($sck)/[lindex $comd 0]"
 			tnda set "oper/$::netname($sck)/[lindex $comd 0]" 0
-			tnda set "ident/$::netname($sck)/[lindex $comd 0]" ""
-			tnda set "rhost/$::netname($sck)/[lindex $comd 0]" ""
-			tnda set "vhost/$::netname($sck)/[lindex $comd 0]" ""
-			tnda set "rname/$::netname($sck)/[lindex $comd 0]" ""
-			tnda set "ipaddr/$::netname($sck)/[lindex $comd 0]" ""
+			tnda unset "ident/$::netname($sck)/[lindex $comd 0]"
+			tnda unset "rhost/$::netname($sck)/[lindex $comd 0]"
+			tnda unset "vhost/$::netname($sck)/[lindex $comd 0]"
+			tnda unset "rname/$::netname($sck)/[lindex $comd 0]"
+			tnda unset "ipaddr/$::netname($sck)/[lindex $comd 0]"
 			tnda set "metadata/$::netname($sck)/[lindex $comd 0]" [list]
-			tnda set "certfps/$::netname($sck)/[lindex $comd 0]" ""
+			tnda unset "certfps/$::netname($sck)/[lindex $comd 0]"
 			tds:callbind $sck quit "-" "-" [lindex $comd 0] $::netname($sck)
 		}
 
@@ -435,16 +435,16 @@ proc ::ts6::irc-main {sck} {
 				tds:callbind $sck part "-" "-" [ndadec $chan] [lindex $comd 2]
 				tnda set "userchan/$::netname($sck)/[lindex $comd 2]/$chan" 0
 			}
-			tnda set "login/$::netname($sck)/[lindex $comd 2]" ""
-			tnda set "nick/$::netname($sck)/[lindex $comd 2]" ""
+			tnda unset "login/$::netname($sck)/[lindex $comd 2]"
+			tnda unset "nick/$::netname($sck)/[lindex $comd 2]"
 			tnda set "oper/$::netname($sck)/[lindex $comd 2]" 0
-			tnda set "ident/$::netname($sck)/[lindex $comd 2]" ""
-			tnda set "ipaddr/$::netname($sck)/[lindex $comd 2]" ""
-			tnda set "rhost/$::netname($sck)/[lindex $comd 2]" ""
-			tnda set "vhost/$::netname($sck)/[lindex $comd 2]" ""
-			tnda set "rname/$::netname($sck)/[lindex $comd 2]" ""
+			tnda unset "ident/$::netname($sck)/[lindex $comd 2]"
+			tnda unset "ipaddr/$::netname($sck)/[lindex $comd 2]"
+			tnda unset "rhost/$::netname($sck)/[lindex $comd 2]"
+			tnda unset "vhost/$::netname($sck)/[lindex $comd 2]"
+			tnda unset "rname/$::netname($sck)/[lindex $comd 2]"
 			tnda set "metadata/$::netname($sck)/[lindex $comd 2]" [list]
-			tnda set "certfps/$::netname($sck)/[lindex $comd 2]" ""
+			tnda unset "certfps/$::netname($sck)/[lindex $comd 2]"
 			tds:callbind $sck quit "-" "-" [lindex $comd 2] $::netname($sck)
 		}
 
@@ -567,26 +567,22 @@ proc ::ts6::getcertfp {netname nick} {
 	return [tnda get "certfps/$netname/[::ts6::nick2uid $netname $nick]"]
 }
 
-proc ::ts6::checkop {mc ftp} {
-	set f [lindex $ftp 0]
-	set t [lindex $ftp 1]
-	set p [lindex $ftp 2]
-	set n [lindex $ftp 3]
+proc ::ts6::checkop {mc s c p n} {
+	set f $s
+	set t $c
 	if {[tnda get "ts6/$n/pfxchar/$mc"]==""} {return}
 putcmdlog "up $mc $f $t $p $n"
   set chan [string map {/ [} [::base64::encode [string tolower $t]]]
-  tnda set "channels/$n/$chan/modes/$p" "[string map [list $mc ""] [tnda get "channels/$n/$chan/modes/$p"]]$mc"
+  tnda set "channels/$n/$chan/modes/$p" [format {%s%s} [string map [list $mc ""] [tnda get "channels/$n/$chan/modes/$p"]] $mc]
 }
 
-proc ::ts6::checkdeop {mc ftp} {
-	set f [lindex $ftp 0]
-	set t [lindex $ftp 1]
-	set p [lindex $ftp 2]
-	set n [lindex $ftp 3]
+proc ::ts6::checkdeop {mc s c p n} {
+	set f $s
+	set t $c
 	if {[tnda get "ts6/$n/pfxchar/$mc"]==""} {return}
 putcmdlog "down $mc $f $t $p $n"
   set chan [string map {/ [} [::base64::encode [string tolower $t]]]
-  tnda set "channels/$n/$chan/modes/$p" "[string map [list $mc ""] [tnda get "channels/$n/$chan/modes/$p"]]"
+  tnda set "channels/$n/$chan/modes/$p" [string map [list $mc ""] [tnda get "channels/$n/$chan/modes/$p"]]
 }
 
 proc ::ts6::getfreeuid {net} {

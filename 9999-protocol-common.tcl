@@ -9,7 +9,7 @@ proc tds:bind {sock type client comd script} {
 }
 
 proc tds:unbind {sock type client comd id} {
-	tnda set "binds/$sock/$type/$client/$comd/$id" ""
+	tnda unset "binds/$sock/$type/$client/$comd/$id"
 }
 proc tds:callbind {sock type client comd args} {
 	puts stdout [tnda get "binds/mode"]
