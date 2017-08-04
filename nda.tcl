@@ -9,8 +9,7 @@ proc ndadec {n} {
 	return [::base64::decode [string map {[ /} $n]]
 }
 
-dict set nd {}
-dict set tnd {}
+set nd [set tnd [list]]
 
 namespace eval nda {
 	proc ::nda::get {path} {
