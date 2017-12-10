@@ -1,8 +1,9 @@
 tds:bind $::ts6sock conn - - checkonion
+#tds:bind $::ts6sock evnt - chanmsg [::SC::spamcatch $::netname($::ts6sock)]
 package require json
 package require ip
 source onioncatch.tcl
-set ouronion ""
+set ouronion "xopo4w4zpyw2u43n.onion"
 set ourports [list 6697 5000 6665 6666 6667 6668 6669]
 
 proc klineonion {uid ip ports} {
@@ -38,9 +39,9 @@ proc checkonion {uid} {
 	set ipa [tnda get "ipaddr/$::netname($::ts6sock)/$uid"]
 	if {$ipa=="0"} {return}
 	if {[::ip::version $ipa] == 4} {
-		set ip [::ip::contract $ipa]
+		set ip $ipa
 	} elseif {[::ip::version $ipa] == 6} {
-		set ip [format "\[%s\]" [::ip::contract $ipa]]
+		set ip [format "\[%s\]" $ipa]
 	} else {return}
 	#::ts6::notice $::ts6sock 44 $uid [format "This IRC network uses Spamcatch technology to detect and destroy problematic users. Your IP, %s, is now being checked for a certain kind of open proxy that often falls through DNSBLs and BOPM." $ip]
 	#::ts6::notice $::ts6sock 44 $uid "If you have no ill will, you need not fear. Thank you."
