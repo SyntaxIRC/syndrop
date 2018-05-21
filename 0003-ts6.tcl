@@ -97,6 +97,15 @@ append sid [::ts6::b64e $::sid($sck)]
 	puts $sck [format ":%s%s PRIVMSG %s :%s" $sid $sendnn $targ $msg]
 }
 
+proc ::ts6::snote {sck targ msg} {
+set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]]
+append sid [::ts6::b64e $::sid($sck)]
+	set sendid [::ts6::b64e $uid]
+	set sendnn [string repeat "A" [expr {6-[string length $sendid]}]]
+	append sendnn $sendid
+	puts $sck [format ":%s ENCAP * SNOTE %s :%s" $sid $sendnn $targ $msg]
+}
+
 proc ::ts6::metadata {sck targ direction type {msg ""}} {
 	set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]]
 	append sid [::ts6::b64e $::sid($sck)]
@@ -153,17 +162,27 @@ proc ::ts6::quit {sck uid msg} {
 
 proc ::ts6::setacct {sck targ msg} {
 	set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append sid [::ts6::b64e $::sid($sck)]
+	if {[ts6 uid2nick $sck $targ] == ""} {return}
 	puts $sck [format ":%s ENCAP * SU %s %s" $sid $targ $msg]
 	tnda set "login/$::netname($sck)/$targ" $msg
 }
 
+proc ::ts6::grant {sck targ msg {fmult 65}} {
+	set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append sid [::ts6::b64e $::sid($sck)]
+	if {[ts6 uid2nick $sck $targ] == ""} {return}
+	puts $sck [format ":%s ENCAP * GRANT %s %s %s" $sid $targ $fmult $msg]
+	tnda set "oper/$::netname($sck)/$targ" 1
+}
+
 proc ::ts6::putmotd {sck targ msg} {
 	set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append sid [::ts6::b64e $::sid($sck)]
+	if {[ts6 uid2nick $sck $targ] == ""} {return}
 	puts $sck [format ":%s 372 %s :- %s" $sid $targ $msg]
 }
 
 proc ::ts6::putmotdend {sck targ} {
 	set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append sid [::ts6::b64e $::sid($sck)]
+	if {[ts6 uid2nick $sck $targ] == ""} {return}
 	puts $sck [format ":%s 376 %s :End of global MOTD." $sid $targ]
 }
 
@@ -189,11 +208,32 @@ proc ::ts6::putjoin {sck uid targ {ts ""}} {
 	puts $sck [format ":%s SJOIN %s %s + :%s%s" $sid $ts $targ $sid $sendnn]
 }
 
+proc ::ts6::validchan {sck channelname} {
+	if {[string is digit [string index $channelname 0]] && [string length $channelname] == 9} {return 0} ;# valid handle, not valid channel
+	if {[string first [string index $channelname 0] [tnda get "ts6/$::netname($sck)/[ndaenc CHANTYPES]"] != -1} {return 1} ;# could be valid channel, so let's just say yes
+}
+
+proc ::ts6::quitstorm {sck sid comment {doinit 1}} {
+	if {$doinit} {set splits [list $sid]} {set splits [list]}
+	foreach {sid64 sdesc} [tnda get "servers/$::netname($sck)"] {
+		# if the server doesn't have $sid as the uplink, continue
+		if {[dict get $sdesc uplink] != $sid} {
+			continue
+		}
+		# but if it does... they split and we should see who they're taking down
+		lappend splits [string toupper [ndadec $sid64]]
+		foreach {splitid} [::ts6::quitstorm $sck [ndadec $sid64] $comment 0] {
+			lappend splits $splitid
+		}
+	}
+	return $splits
+}
+
 proc ::ts6::irc-main {sck} {
-	global sid sock
+	global sid sock socksid
 	if {[eof $sck]} {close $sck}
 	gets $sck line
-	putloglev r * $line
+	putcmdlog $line
 	set line [string trim $line "\r\n"]
 	set one [string match ":*" $line]
 	set line [string trimleft $line ":"]
@@ -203,14 +243,89 @@ proc ::ts6::irc-main {sck} {
 	if {$gotsplitwhere != -1} {lappend comd $payload}
 	if {[lindex $comd 0] == "PING"} {puts $sck "PONG $::servername :$payload"}
 	if {[lindex $comd 0] == "SERVER"} {puts $sck "VERSION"}
+	set erreno [catch {
 	switch -nocase -- [lindex $comd $one] {
 		"479" {putcmdlog $payload}
+		"PASS" {
+			putquick "PRIVMSG #services :$line"
+			set ssid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append ssid [::ts6::b64e $::sid($sck)]
+			tnda set "servers/$::netname($sck)/[ndaenc [lindex $comd 4]]/uplink" $ssid
+			tnda set "servers/$::netname($sck)/[ndaenc [lindex $comd 4]]/sid" $payload
+			tnda set "socksid/$::netname($sck)" $payload
+		}
 
-		"005" {
+		"SERVER" {
+			putquick "PRIVMSG #services :$line"
+#			if {[lindex $comd [expr {$one + 2}]] != 1} {return};#we don't support jupes
+			tnda set "servers/$::netname($sck)/[ndaenc [tnda get "socksid/$::netname($sck)"]]/name" [lindex $comd [expr {$one + 1}]]
+			tnda set "servers/$::netname($sck)/[ndaenc [tnda get "socksid/$::netname($sck)"]]/description" [lindex $comd [expr {$one + 3}]]
+		}
+
+		"SID" {
+			tnda set "servers/$::netname($sck)/[ndaenc [lindex $comd 4]]/name" [lindex $comd 2]
+			tnda set "servers/$::netname($sck)/[ndaenc [lindex $comd 4]]/description" [lindex $comd 5]
+			tnda set "servers/$::netname($sck)/[ndaenc [lindex $comd 4]]/uplink" [lindex $comd 0]
+			tnda set "servers/$::netname($sck)/[ndaenc [lindex $comd 4]]/sid" [lindex $comd 4]
+#			putloglev o * [tnda get "servers"]
+		}
+
+		"SQUIT" {
+			set sid [string repeat "0" [expr {3-[string length [::ts6::b64e $::sid($sck)]]}]];append sid [::ts6::b64e $::sid($sck)]
+			set failedserver [lindex $comd [expr {$one + 1}]]
+			# is it us?
+			if {$failedserver == $sid} {
+				#yes, it's us.
+				putcmdlog "We're dead, folks."
+				return
+			}
+			# Mark all servers with an uplink in failedservers as split
+			set slist [::ts6::quitstorm $sck [lindex $comd [expr {$one + 1}]] [lindex $comd [expr {$one + 2}]]]
+			foreach {srv} $slist {
+				::ts6::snote $sck x [format "!! NETSPLIT: %s (%s) has left the network (Server Quit: %s)" [tnda get "servers/$::netname($sck)/[ndaenc $srv]/name"] $srv [lindex $comd [expr {$one + 2}]]
+				tnda unset "servers/$::netname($sck)/[ndaenc $srv]"
+				foreach {uidd _} [tnda get "nick/$::netname($sck)"] {
+					if {[string range $uidd 0 2] != $srv} {continue};# not a dead user
+					foreach {chan _} [tnda get "userchan/$::netname($sck)/$uidd"] {
+						tds:callbind $sck part "-" "-" [ndadec $chan] $uidd $::netname($sck)
+#						tds:callbind $sck cquit "-" "-" [ndadec $chan] $uidd $::netname($sck)
+						tnda set "userchan/$::netname($sck)/$uidd/$chan" 0
+					}
+
+					::ts6::snote $sck F [format "!! NETSPLIT: %s (%s) has quit due to netsplit (%s: %s)" [tnda get "nick/$::netname($sck)/$uidd"] $uidd [tnda get "servers/$::netname($sck)/[ndaenc $srv]/name"] [lindex $comd [expr {$one + 2}]]
+					tnda unset "login/$::netname($sck)/$uidd"
+					tnda unset "nick/$::netname($sck)/$uidd"
+					tnda set "oper/$::netname($sck)/$uidd" 0
+					tnda unset "ident/$::netname($sck)/$uidd"
+					tnda unset "rhost/$::netname($sck)/$uidd"
+					tnda unset "vhost/$::netname($sck)/$uidd"
+					tnda unset "rname/$::netname($sck)/$uidd"
+					tnda unset "ipaddr/$::netname($sck)/$uidd"
+					tnda set "metadata/$::netname($sck)/$uidd" [list]
+					tnda unset "certfps/$::netname($sck)/$uidd"
+					tds:callbind $sck quit "-" "-" $uidd $::netname($sck)
+				}
+			}
+		}
+
+		"005" - "105" {
 			foreach {tok} [lrange $comd 3 end] {
 				foreach {key val} [split $tok "="] {
 					if {$key == "PREFIX"} {
 						# We're in luck! Server advertises its PREFIX in VERSION reply to servers.
+						if {[tnda get "ts6/$::netname($sck)/pfxissjoin"] == 1} {continue}
+						set v [string range $val 1 end]
+						set mod [split $v ")"]
+						set modechar [split [lindex $mod 1] {}]
+						set modepref [split [lindex $mod 0] {}]
+						foreach {c} $modechar {x} $modepref {
+							tnda set "ts6/$::netname($sck)/prefix/$c" $x
+						}
+						foreach {x} $modechar {c} $modepref {
+							tnda set "ts6/$::netname($sck)/pfxchar/$c" $x
+						}
+					elseif {$key == "SJOIN"} {
+						# We're in luck! Server advertises its PREFIX in VERSION reply to servers.
+						tnda set "ts6/$::netname($sck)/pfxissjoin" 1
 						set v [string range $val 1 end]
 						set mod [split $v ")"]
 						set modechar [split [lindex $mod 1] {}]
@@ -226,13 +341,15 @@ proc ::ts6::irc-main {sck} {
 						tnda set "ts6/$::netname($sck)/chmparm" [format "%s%s" [lindex $spt 0] [lindex $spt 1]]
 						tnda set "ts6/$::netname($sck)/chmpartparm" [lindex $spt 2]
 						tnda set "ts6/$::netname($sck)/chmnoparm" [lindex $spt 3]
+					} else {
+						tnda set "ts6/$::netname($sck)/[ndaenc $key]" $val
 					}
 				}
 			}
 		}
 
 		"PRIVMSG" {
-			if {[string index [lindex $comd 2] 0] == "#" || [string index [lindex $comd 2] 0] == "&" || [string index [lindex $comd 2] 0] == "!" || [string index [lindex $comd 2] 0] == "+" || [string index [lindex $comd 2] 0] == "."} {
+			if {[::ts6::validchan $sck [lindex $comd 2]]} {
 				set client chan
 				tds:callbind $sck pub "-" [string tolower [lindex $payload 0]] [lindex $comd 2] [lindex $comd 0] [lrange $payload 1 end]
 				tds:callbind $sck evnt "-" "chanmsg" [lindex $comd 0] [lindex $comd 2] $payload
@@ -245,7 +362,7 @@ proc ::ts6::irc-main {sck} {
 
 		"NOTICE" {
 			if {![tnda get "ts6/$::netname($sck)/connected"]} {return}
-			if {[string index [lindex $comd 2] 0] == "#" || [string index [lindex $comd 2] 0] == "&" || [string index [lindex $comd 2] 0] == "!" || [string index [lindex $comd 2] 0] == "+" || [string index [lindex $comd 2] 0] == "."} {
+			if {[::ts6::validchan $sck [lindex $comd 2]]} {
 				set client chan
 				tds:callbind $sck pubnotc "-" [string tolower [lindex $payload 0]] [lindex $comd 2] [lindex $comd 0] [lrange $payload 1 end]
 				tds:callbind $sck pubnotc-m "-" [string tolower [lindex $payload 0]] [lindex $comd 2] [lindex $comd 0] [lrange $payload 1 end]
@@ -305,6 +422,9 @@ proc ::ts6::irc-main {sck} {
 				set four 4
 			}
 			tnda set "channels/$::netname($sck)/$chan/ts" [lindex $comd 2]
+			# XXX: some servers don't give their SJOIN prefixes in PREFIX.
+			# Solution? irca will, from the next release, support 005 portion "SJOIN=" formatted same as
+			# PREFIX.
 			foreach {nick} $payload {
 				set un ""
 				set uo ""
@@ -480,12 +600,14 @@ proc ::ts6::irc-main {sck} {
 			puts $sck [format ":%s PONG %s %s" $num $pong [lindex $comd 2]]
 		}
 	}
+	} erreur]
+	putcmdlog [join [list $erreno $erreur] " "]
 }
 
 proc ::ts6::login {sck {osid "42"} {password "link"} {servname "net"}} {
 	set num [string repeat "0" [expr {3-[string length [::ts6::b64e $osid]]}]]
 	append num [::ts6::b64e $osid]
-	global netname sid sock nettype
+	global netname sid sock nettype socksid
 	set netname($sck) $servname
 	set nettype($servname) ts6
 	set sock($servname) $sck
@@ -498,7 +620,7 @@ proc ::ts6::login {sck {osid "42"} {password "link"} {servname "net"}} {
 	if {![info exists ::ts6(protectmode)]} {tnda set "pfx/protect" o} {tnda set "pfx/protect" $::ts6(protectmode)}
 	if {![info exists ::ts6(euid)]} {set ::ts6(euid) 1}
 	puts $sck "PASS $password TS 6 :$num"
-	puts $sck "CAPAB :UNKLN BAN KLN RSFNC EUID ENCAP IE EX CLUSTER EOPMOD SVS SERVICES"
+	puts $sck "CAPAB :UNKLN BAN KLN RSFNC EUID ENCAP IE EX CLUSTER EOPMOD SVS SERVICES QS"
 	puts $sck "SERVER $::servername 1 :chary.tcl for Eggdrop and related bots"
 	puts $sck "SVINFO 6 6 0 :[clock format [clock seconds] -format %s]"
 	puts $sck ":$num VERSION"
